@@ -1,0 +1,22 @@
+## Interface: 11200
+## Title:|cff33ffcc[工具]|cffffffffRaidAlert
+## Title-zhCN: |cff33ffcc[工具]|cffffffffBoss战Debuff提醒
+## Notes:|R |cff33ffccBoss战Debuff提醒，作者：德兔（乌龟拉风服务器）。|N命令：/rat
+## Author: 德兔（乌龟拉风服务器）
+## X-Website: https://github.com/Zhaoxinak/DT_RaidAlert
+## Version: 1.0
+## Dependencies: !Libs
+# SavedVariables: raidData, playerGuildData
+# SavedVariablesPerCharacter: ownGuild, startRaidTime, raidStartTimeString, uniqueID
+
+Tools.lua
+
+Locale-zhCN.lua
+Locale-enUS.lua
+Locale-zhTW.lua
+
+DT_RaidAlert_Raid.lua
+
+DT_RaidAlert_Main.lua
+
+DT_RaidAlert.lua

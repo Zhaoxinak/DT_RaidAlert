@@ -1,9 +1,11 @@
-local BASE_FRAME_HEIGHT = 200 -- 主框架基础高度
-
+local BASE_FRAME_HEIGHT = 180 -- 主框架基础高度
+local BASE_FRAME_WIDTH = 400
 local statsFrame
 local searchBox
 local statsText
 local cooldownSlider
+local miniButton -- 缩小后的按钮
+local miniButtonDragFrame -- 缩小按钮的外层 Frame
 -- 定时检测事件名
 local DEBUFF_CHECK_EVENT = "RA_DebuffCheckEvent"
 local currentDebuffName = nil
@@ -35,7 +37,7 @@ function RAMain:SetUpMainFrame()
     if self.mf then return end -- 防止重复创建
 
     local f = CreateFrame("Frame", "RAMainFrame", UIParent)
-    f:SetWidth(600)                                            -- 初始宽度，会动态调整
+    f:SetWidth(BASE_FRAME_WIDTH)                                            -- 初始宽度，会动态调整
     f:SetHeight(BASE_FRAME_HEIGHT)                             -- 初始高度，会动态调整
     f:SetBackdrop({
         bgFile = "Interface\\RaidFrame\\UI-RaidFrame-GroupBg", -- 背景贴图
@@ -44,7 +46,7 @@ function RAMain:SetUpMainFrame()
         insets = { left = 5, right = 5, top = 5, bottom = 5 }  -- 内边距
     })
     f:SetAlpha(0.7)                                            -- 透明度
-    f:SetFrameStrata("LOW")                                    -- 框架层级
+    f:SetFrameStrata("MEDIUM")                                    -- 框架层级
 
     -- 设置初始位置并允许拖动
     f:ClearAllPoints()
@@ -83,20 +85,20 @@ function RAMain:SetUpMainFrame()
     f.textures["headLine"] = headerLine
 
     -- 关闭按钮
-    local closeButton = CreateFrame("Button", "RAMainCloseButton", f, "UIPanelCloseButton") -- 使用标准关闭按钮模板
-    closeButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -7)
-    closeButton:SetScript("OnClick", function() f:Hide() end)
-    f.buttons["closeButton"] = closeButton
+    local xButton = CreateFrame("Button", "RAMainCloseButton", f, "UIPanelCloseButton") -- 使用标准关闭按钮模板
+    xButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -7)
+    xButton:SetScript("OnClick", function() f:Hide() end)
+    f.buttons["closeButton"] = xButton
 
     -- 添加统计数据展示区域
     statsFrame = CreateFrame("Frame", "RAStatsFrame", f)
-    statsFrame:SetPoint("TOP", headerLine, "BOTTOM", 0, -10)
-    statsFrame:SetWidth(f:GetWidth() - 20)
+    statsFrame:SetPoint("TOP", headerLine, "BOTTOM", 0, 0)
+    statsFrame:SetWidth(f:GetWidth() - 10)
     statsFrame:SetHeight(50)
 
     statsText = statsFrame:CreateFontString(nil, "OVERLAY")
     statsText:SetFontObject("GameFontNormal")
-    statsText:SetPoint("LEFT", statsFrame, "LEFT", 10, 0)
+    statsText:SetPoint("LEFT", statsFrame, "LEFT", 2, 0)
     statsText:SetText(L["当前状态:"])
     statsFrame.text = statsText
 
@@ -106,15 +108,15 @@ function RAMain:SetUpMainFrame()
     titleLine:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-BarFill")
     titleLine:SetWidth(f:GetWidth() - 10) -- 动态宽度
     titleLine:SetHeight(4)
-    titleLine:SetPoint("TOPLEFT", statsText, "BOTTOMLEFT", 4, 0)
+    titleLine:SetPoint("TOPLEFT", statsText, "BOTTOMLEFT", 0, 2)
     f.textures["titleLine"] = titleLine
 
 
     -- 创建搜索框
     searchBox = CreateFrame("EditBox", nil, f,
         "InputBoxTemplate")
-    searchBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
-    searchBox:SetWidth(200)
+    searchBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 5)
+    searchBox:SetWidth(150)
     searchBox:SetHeight(30)
     searchBox:SetAutoFocus(false)
     searchBox:SetText(L["输入debuff名称"])
@@ -122,20 +124,21 @@ function RAMain:SetUpMainFrame()
     -- 创建查询按钮
     local searchButton = CreateFrame("Button", nil, f,
         "UIPanelButtonTemplate")
-    searchButton:SetPoint("LEFT", searchBox, "RIGHT", 10, 0)
-    searchButton:SetWidth(80)
+    searchButton:SetPoint("LEFT", searchBox, "RIGHT", 5, 0)
+    searchButton:SetWidth(70)
     searchButton:SetHeight(30)
     searchButton:SetText(L["开启检测"])
     searchButton:SetScript("OnClick", function()
         local query = searchBox:GetText()
         RAMain:UpdateCheckDebuff(query)
+        searchBox:ClearFocus() -- 失去焦点
     end)
 
     -- 重置查询按钮
     local resetButton = CreateFrame("Button", nil, f,
         "UIPanelButtonTemplate")
-    resetButton:SetPoint("LEFT", searchButton, "RIGHT", 10, 0)
-    resetButton:SetWidth(80)
+    resetButton:SetPoint("LEFT", searchButton, "RIGHT", 5, 0)
+    resetButton:SetWidth(60)
     resetButton:SetHeight(30)
     resetButton:SetText(L["停止"])
     resetButton:SetScript("OnClick", function()
@@ -143,10 +146,10 @@ function RAMain:SetUpMainFrame()
     end)
 
     -- 关闭按钮
-    closeButton = CreateFrame("Button", nil, f,
+    local closeButton = CreateFrame("Button", nil, f,
         "UIPanelButtonTemplate")
     closeButton:SetPoint("LEFT", resetButton, "RIGHT", 10, 0)
-    closeButton:SetWidth(80)
+    closeButton:SetWidth(60)
     closeButton:SetHeight(30)
     closeButton:SetText(L["关闭"])
     closeButton:SetScript("OnClick", function()
@@ -173,9 +176,68 @@ function RAMain:SetUpMainFrame()
     _G[cooldownSlider:GetName() .. 'High']:SetText("60")
     _G[cooldownSlider:GetName() .. 'Text']:SetText(L["通知间隔:"] .. " " .. cooldownSlider:GetValue() .. L["秒"])
 
+    -- 添加缩小按钮
+    local minimizeButton = CreateFrame("Button", "RAMainMinimizeButton", f, "UIPanelButtonTemplate")
+    minimizeButton:SetPoint("RIGHT", xButton, "LEFT", -5, 0)
+    minimizeButton:SetWidth(60)
+    minimizeButton:SetHeight(30)
+    minimizeButton:SetText(L["缩小"] or "缩小")
+    minimizeButton:SetScript("OnClick", function()
+        -- 先获取主界面当前的位置
+        local point, relativeTo, relativePoint, xOfs, yOfs = f:GetPoint()
+        -- 设置 miniButtonDragFrame 到主界面当前位置
+        if miniButtonDragFrame then
+            miniButtonDragFrame:ClearAllPoints()
+            miniButtonDragFrame:SetPoint(point or "CENTER", relativeTo or UIParent, relativePoint or "CENTER", xOfs or 0, yOfs or 0)
+            -- miniButtonDragFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0) -- 默认居中
+            miniButtonDragFrame:Show()
+        end
+        f:Hide()
+    end)
+    f.buttons["minimizeButton"] = minimizeButton
+
     f:Hide()
     self.mf = f -- 将创建好的框架赋值给 self.mf
 
+    -- 创建缩小后的按钮（miniButton），初始隐藏
+    if not miniButton then
+        -- 新增：创建可拖动的外层 Frame
+        miniButtonDragFrame = CreateFrame("Frame", "RAMainMiniButtonDragFrame", UIParent)
+        miniButtonDragFrame:SetWidth(90)  -- 比 miniButton 稍大
+        miniButtonDragFrame:SetHeight(50)
+        -- 不再在这里设置位置，缩小时动态设置
+        miniButtonDragFrame:SetMovable(true)
+        miniButtonDragFrame:EnableMouse(true)
+        miniButtonDragFrame:RegisterForDrag("LeftButton")
+        miniButtonDragFrame:SetClampedToScreen(true)
+        miniButtonDragFrame:SetScript("OnDragStart", function() miniButtonDragFrame:StartMoving() end)
+        miniButtonDragFrame:SetScript("OnDragStop", function() miniButtonDragFrame:StopMovingOrSizing() end)
+        miniButtonDragFrame:Hide()
+
+        miniButtonDragFrame:SetBackdrop({
+            bgFile = "Interface\\RaidFrame\\UI-RaidFrame-GroupBg", -- 背景贴图
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",   -- 边框贴图
+            edgeSize = 16,
+            insets = { left = 5, right = 5, top = 5, bottom = 5 }  -- 内边距
+        })
+        miniButtonDragFrame:SetAlpha(0.7)                                            -- 透明度
+        miniButtonDragFrame:SetFrameStrata("MEDIUM")                                    -- 框架层级
+
+        -- miniButton 作为子元素
+        miniButton = CreateFrame("Button", "RAMainMiniButton", miniButtonDragFrame, "UIPanelButtonTemplate")
+        miniButton:SetWidth(70)
+        miniButton:SetHeight(30)
+        miniButton:SetText(L["检测还原"] or "检测还原")
+        miniButton:SetPoint("CENTER", miniButtonDragFrame, "CENTER", 0, 0)
+        miniButton:SetScript("OnClick", function()
+            if self.mf then self.mf:Show() end
+            miniButtonDragFrame:Hide()
+        end)
+        -- miniButton:Hide() -- 由外层控制显示
+
+        -- 方便后续引用
+        self.miniButtonDragFrame = miniButtonDragFrame
+    end
 end
 
 function RAMain:UpdateCheckDebuff(debuffName)

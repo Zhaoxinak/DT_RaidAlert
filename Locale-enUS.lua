@@ -29,5 +29,7 @@ L:RegisterTranslations("enUS", function()
         ["开启后，自动私聊团队成员"] = "Automatically whisper raid members when enabled",
         ["私聊模式已开启"] = "Whisper mode enabled",
         ["私聊模式已关闭"] = "Whisper mode disabled",
+        ["缩小"] = "Minimize",
+        ["检测还原"] = "Detect and restore",
     }
 end)

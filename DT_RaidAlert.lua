@@ -18,7 +18,7 @@ RaidAlert = AceLibrary("AceAddon-2.0"):new(
 local L = AceLibrary("AceLocale-2.2"):new("RaidAlert")
 
 -- FuBar 或类似插件显示的图标
-RaidAlert.hasIcon = "Interface\\Icons\\Spell_nature_forceofnature"
+RaidAlert.hasIcon = "Interface\\Icons\\Spell_holy_borrowedtime"
 
 
 -- 插件间通信方法名

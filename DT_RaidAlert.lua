@@ -1,9 +1,10 @@
 --[[---------------------------------------------------------------------------
   DT_RaidAlert 主文件
   - 注册聊天命令和选项菜单
+  - 插件主入口，负责初始化、配置、通信等
 ---------------------------------------------------------------------------]]
 
--- 插件对象定义，继承 Ace 库功能
+-- 插件对象定义，继承 Ace2 多个库
 RaidAlert = AceLibrary("AceAddon-2.0"):new(
     "AceEvent-2.0",    -- 事件处理
     "AceComm-2.0",     -- 插件间通信
@@ -20,8 +21,7 @@ local L = AceLibrary("AceLocale-2.2"):new("RaidAlert")
 -- FuBar 或类似插件显示的图标
 RaidAlert.hasIcon = "Interface\\Icons\\Spell_holy_borrowedtime"
 
-
--- 插件间通信方法名
+-- 插件间通信方法名常量
 local COMM_METHOD_UPDATE_MANUAL = "UpdateManuel"
 
 -- === 插件生命周期函数 ===
@@ -69,16 +69,10 @@ function RaidAlert:OnInitialize()
     self.notificationCooldownSeconds = 15 -- 消息通知冷却时间 (秒)
 
     DEFAULT_CHAT_FRAME:AddMessage(self.Prefix .. L["已加载"])
-
 end
 
 -- 插件启用 (登录、重载界面时)
 function RaidAlert:OnEnable()
-   
-    -- if RAMain and RAMain.OnEnable then
-    --     RAMain:OnEnable()
-    -- end
-
     -- 注册插件间通信，监听团队消息
     self:RegisterComm(self.Prefix, "RAID")
     -- 注册团队成员变化事件
@@ -115,8 +109,8 @@ function RaidAlert:InitializeOptions()
                 desc = L["打开界面描述"],
                 order = 1,
                 func = function()
-                    if RAMain and RAMain.mf then
-                        RAMain.mf:Show()
+                    if RAMain and RAMain.mainFrame then
+                        RAMain.mainFrame:Show()
                     else
                         self:Print("错误：无法打开界面，RAMain 或其界面未初始化。")
                     end

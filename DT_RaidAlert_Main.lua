@@ -1,164 +1,153 @@
-local BASE_FRAME_HEIGHT = 180 -- 主框架基础高度
-local BASE_FRAME_WIDTH = 400
-local statsFrame
-local searchBox
-local statsText
-local cooldownSlider
-local miniButton -- 缩小后的按钮
-local miniButtonDragFrame -- 缩小按钮的外层 Frame
+-- 主界面相关常量
+local FRAME_HEIGHT = 180      -- 主界面高度
+local FRAME_WIDTH = 400       -- 主界面宽度
+
+-- 主界面及其控件引用
+local statsFrame, searchBox, statsText, cooldownSlider
+local miniButton, miniButtonDragFrame
+
 -- 定时检测事件名
 local DEBUFF_CHECK_EVENT = "RA_DebuffCheckEvent"
-local currentDebuffNames = nil -- 支持多debuff
+local activeDebuffNames = nil -- 当前激活的debuff名称列表
 
--- 定义 RAMain 模块表
+-- RAMain 模块定义，继承 Ace2 多个库
 RAMain = AceLibrary("AceAddon-2.0"):new(
-    "AceEvent-2.0",      -- 事件处理
-    "AceComm-2.0",       -- 插件间通信
-    "AceDB-2.0",         -- 数据库 (保存配置)
-    "AceDebug-2.0",      -- 调试工具
-    "AceConsole-2.0",    -- 命令行接口
-    "AceHook-2.1"        -- 函数钩子
+    "AceEvent-2.0",    -- 事件处理
+    "AceComm-2.0",     -- 通信
+    "AceDB-2.0",       -- 数据库
+    "AceDebug-2.0",    -- 调试
+    "AceConsole-2.0",  -- 命令行
+    "AceHook-2.1"      -- 钩子
 )
 
 -- 获取本地化库实例
 local L = AceLibrary("AceLocale-2.2"):new("RaidAlert")
+local whisperCooldowns = {} -- 记录每个玩家上次提醒时间，防止刷屏
 
--- 私聊冷却表
-local whisperCooldowns = {}
-
--- 初始化 RAMain 模块 (由 RaidBuff:OnInitialize 调用)
+-- 插件初始化，创建主界面
 function RAMain:OnInitialize()
-    -- 创建 UI 框架 (如果尚未创建)
-    if not self.mf then self:SetUpMainFrame() end -- 主分配界面
+    if not self.mainFrame then self:CreateMainFrame() end
 end
 
--- 创建主分配界面 (mf: main frame)
-function RAMain:SetUpMainFrame()
-    if self.mf then return end -- 防止重复创建
+-- 创建主界面及其所有控件
+function RAMain:CreateMainFrame()
+    if self.mainFrame then return end -- 已创建则跳过
 
-    local f = CreateFrame("Frame", "RAMainFrame", UIParent)
-    f:SetWidth(BASE_FRAME_WIDTH)                                            -- 初始宽度，会动态调整
-    f:SetHeight(BASE_FRAME_HEIGHT)                             -- 初始高度，会动态调整
-    f:SetBackdrop({
-        bgFile = "Interface\\RaidFrame\\UI-RaidFrame-GroupBg", -- 背景贴图
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",   -- 边框贴图
+    -- 创建主Frame
+    local frame = CreateFrame("Frame", "RAMainFrame", UIParent)
+    frame:SetWidth(FRAME_WIDTH)
+    frame:SetHeight(FRAME_HEIGHT)
+    frame:SetBackdrop({
+        bgFile = "Interface\\RaidFrame\\UI-RaidFrame-GroupBg",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         edgeSize = 16,
-        insets = { left = 5, right = 5, top = 5, bottom = 5 }  -- 内边距
+        insets = { left = 5, right = 5, top = 5, bottom = 5 }
     })
-    f:SetAlpha(0.7)                                            -- 透明度
-    f:SetFrameStrata("MEDIUM")                                    -- 框架层级
+    frame:SetAlpha(0.7)
+    frame:SetFrameStrata("MEDIUM")
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    frame:EnableMouse(true)
+    frame:SetClampedToScreen(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetMovable(true)
+    frame:SetScript("OnDragStart", function() frame:StartMoving() end)
+    frame:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
 
-    -- 设置初始位置并允许拖动
-    f:ClearAllPoints()
-    f:SetPoint("CENTER", UIParent, "CENTER", 0, 0) -- 默认居中
-    f:EnableMouse(true)
-    f:SetClampedToScreen(true)                     -- 限制在屏幕内
-    f:RegisterForDrag("LeftButton")
-    f:SetMovable(true)
-    f:SetScript("OnDragStart", function() f:StartMoving() end)
-    f:SetScript("OnDragStop", function()
-        f:StopMovingOrSizing()
-    end)
+    -- 存储控件引用
+    frame.textures, frame.fontStrs, frame.buttons = {}, {}, {}
 
-    -- === 创建界面元素 ===
-    f.textures = {} -- 存储纹理
-    f.fontStrs = {} -- 存储字体串
-    f.buttons = {}  -- 存储按钮
+    -- 标题栏纹理
+    local headerTex = frame:CreateTexture(nil, "ARTWORK")
+    headerTex:SetTexture("Interface\\QuestFrame\\UI-HorizontalBreak")
+    headerTex:SetPoint("TOP", frame, "TOP", 0, -10)
+    frame.textures["header"] = headerTex
 
-    -- --- 顶部标题栏 ---
-    local headerTexture = f:CreateTexture(nil, "ARTWORK")
-    headerTexture:SetTexture("Interface\\QuestFrame\\UI-HorizontalBreak") -- 水平分割线纹理
-    headerTexture:SetPoint("TOP", f, "TOP", 0, -10)
-    f.textures["head"] = headerTexture
-
-    local headerText = f:CreateFontString(nil, "OVERLAY")
+    -- 标题文字
+    local headerText = frame:CreateFontString(nil, "OVERLAY")
     headerText:SetFontObject("GameFontNormal")
-    headerText:SetPoint("TOP", f, "TOP", 0, -10)
-    headerText:SetText(L["标题"]) -- 使用本地化标题
-    f.fontStrs["head"] = headerText
+    headerText:SetPoint("TOP", frame, "TOP", 0, -10)
+    headerText:SetText(L["标题"])
+    frame.fontStrs["header"] = headerText
 
-    local headerLine = f:CreateTexture(nil, "ARTWORK")
-    headerLine:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-BarFill") -- 细线纹理
-    headerLine:SetWidth(f:GetWidth() - 10)                                        -- 动态宽度
+    -- 标题下分割线
+    local headerLine = frame:CreateTexture(nil, "ARTWORK")
+    headerLine:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-BarFill")
+    headerLine:SetWidth(frame:GetWidth() - 10)
     headerLine:SetHeight(4)
-    headerLine:SetPoint("BOTTOM", headerTexture, "BOTTOM", 0, 0)
-    f.textures["headLine"] = headerLine
+    headerLine:SetPoint("BOTTOM", headerTex, "BOTTOM", 0, 0)
+    frame.textures["headerLine"] = headerLine
 
-    -- 关闭按钮
-    local xButton = CreateFrame("Button", "RAMainCloseButton", f, "UIPanelCloseButton") -- 使用标准关闭按钮模板
-    xButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -7)
-    xButton:SetScript("OnClick", function() f:Hide() end)
-    f.buttons["closeButton"] = xButton
+    -- 关闭按钮（右上角）
+    local closeBtn = CreateFrame("Button", "RAMainCloseButton", frame, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -7)
+    closeBtn:SetScript("OnClick", function() frame:Hide() end)
+    frame.buttons["close"] = closeBtn
 
-    -- 添加统计数据展示区域
-    statsFrame = CreateFrame("Frame", "RAStatsFrame", f)
+    -- 统计区域Frame
+    statsFrame = CreateFrame("Frame", "RAStatsFrame", frame)
     statsFrame:SetPoint("TOP", headerLine, "BOTTOM", 0, 0)
-    statsFrame:SetWidth(f:GetWidth() - 10)
+    statsFrame:SetWidth(frame:GetWidth() - 10)
     statsFrame:SetHeight(50)
 
+    -- 统计区域文字
     statsText = statsFrame:CreateFontString(nil, "OVERLAY")
     statsText:SetFontObject("GameFontNormal")
     statsText:SetPoint("LEFT", statsFrame, "LEFT", 2, 0)
     statsText:SetText(L["当前状态:"])
     statsFrame.text = statsText
 
-
-    -- 队伍标题下的水平分割线
-    local titleLine = f:CreateTexture(nil, "ARTWORK")
+    -- 统计区域下分割线
+    local titleLine = frame:CreateTexture(nil, "ARTWORK")
     titleLine:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-BarFill")
-    titleLine:SetWidth(f:GetWidth() - 10) -- 动态宽度
+    titleLine:SetWidth(frame:GetWidth() - 10)
     titleLine:SetHeight(4)
     titleLine:SetPoint("TOPLEFT", statsText, "BOTTOMLEFT", 0, 2)
-    f.textures["titleLine"] = titleLine
+    frame.textures["titleLine"] = titleLine
 
-
-    -- 创建搜索框
-    searchBox = CreateFrame("EditBox", nil, f,
-        "InputBoxTemplate")
-    searchBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 5)
+    -- 搜索框（输入debuff名称）
+    searchBox = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
+    searchBox:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 10, 5)
     searchBox:SetWidth(150)
     searchBox:SetHeight(30)
     searchBox:SetAutoFocus(false)
     searchBox:SetText(L["输入debuff名称"])
 
-    -- 创建查询按钮
-    local searchButton = CreateFrame("Button", nil, f,
-        "UIPanelButtonTemplate")
-    searchButton:SetPoint("LEFT", searchBox, "RIGHT", 5, 0)
-    searchButton:SetWidth(70)
-    searchButton:SetHeight(30)
-    searchButton:SetText(L["开启检测"])
-    searchButton:SetScript("OnClick", function()
+    -- 查询按钮（开启检测）
+    local searchBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    searchBtn:SetPoint("LEFT", searchBox, "RIGHT", 5, 0)
+    searchBtn:SetWidth(70)
+    searchBtn:SetHeight(30)
+    searchBtn:SetText(L["开启检测"])
+    searchBtn:SetScript("OnClick", function()
         local query = searchBox:GetText()
-        RAMain:UpdateCheckDebuff(query)
-        searchBox:ClearFocus() -- 失去焦点
+        RAMain:StartDebuffCheck(query)
+        searchBox:ClearFocus()
     end)
 
-    -- 重置查询按钮
-    local resetButton = CreateFrame("Button", nil, f,
-        "UIPanelButtonTemplate")
-    resetButton:SetPoint("LEFT", searchButton, "RIGHT", 5, 0)
-    resetButton:SetWidth(60)
-    resetButton:SetHeight(30)
-    resetButton:SetText(L["停止"])
-    resetButton:SetScript("OnClick", function()
-        RAMain:UpdateCheckDebuff()
+    -- 停止按钮
+    local stopBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    stopBtn:SetPoint("LEFT", searchBtn, "RIGHT", 5, 0)
+    stopBtn:SetWidth(60)
+    stopBtn:SetHeight(30)
+    stopBtn:SetText(L["停止"])
+    stopBtn:SetScript("OnClick", function()
+        RAMain:StartDebuffCheck()
     end)
 
-    -- 关闭按钮
-    local closeButton = CreateFrame("Button", nil, f,
-        "UIPanelButtonTemplate")
-    closeButton:SetPoint("LEFT", resetButton, "RIGHT", 10, 0)
-    closeButton:SetWidth(60)
-    closeButton:SetHeight(30)
-    closeButton:SetText(L["关闭"])
-    closeButton:SetScript("OnClick", function()
-        RAMain:UpdateCheckDebuff()
-        f:Hide()
+    -- 关闭按钮（隐藏界面）
+    local hideBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    hideBtn:SetPoint("LEFT", stopBtn, "RIGHT", 10, 0)
+    hideBtn:SetWidth(60)
+    hideBtn:SetHeight(30)
+    hideBtn:SetText(L["关闭"])
+    hideBtn:SetScript("OnClick", function()
+        RAMain:StartDebuffCheck()
+        frame:Hide()
     end)
 
-    -- 添加冷却时间滑块
-    cooldownSlider = CreateFrame("Slider", "RAStatsCooldownSlider", f, "OptionsSliderTemplate")
+    -- 冷却时间滑块（设置通知间隔）
+    cooldownSlider = CreateFrame("Slider", "RAStatsCooldownSlider", frame, "OptionsSliderTemplate")
     cooldownSlider:SetOrientation("HORIZONTAL")
     cooldownSlider:SetWidth(180)
     cooldownSlider:SetHeight(20)
@@ -167,6 +156,7 @@ function RAMain:SetUpMainFrame()
     cooldownSlider:SetValueStep(1)
     cooldownSlider:SetValue(RaidAlert and RaidAlert.notificationCooldownSeconds or 15)
     cooldownSlider:SetScript("OnValueChanged", function()
+        -- arg1为当前滑块值
         if RaidAlert then
             RaidAlert.notificationCooldownSeconds = arg1
         end
@@ -176,36 +166,32 @@ function RAMain:SetUpMainFrame()
     _G[cooldownSlider:GetName() .. 'High']:SetText("60")
     _G[cooldownSlider:GetName() .. 'Text']:SetText(L["通知间隔:"] .. " " .. cooldownSlider:GetValue() .. L["秒"])
 
-    -- 添加缩小按钮
-    local minimizeButton = CreateFrame("Button", "RAMainMinimizeButton", f, "UIPanelButtonTemplate")
-    minimizeButton:SetPoint("RIGHT", xButton, "LEFT", -5, 0)
-    minimizeButton:SetWidth(60)
-    minimizeButton:SetHeight(30)
-    minimizeButton:SetText(L["缩小"] or "缩小")
-    minimizeButton:SetScript("OnClick", function()
-        -- 先获取主界面当前的位置
-        local point, relativeTo, relativePoint, xOfs, yOfs = f:GetPoint()
-        -- 设置 miniButtonDragFrame 到主界面当前位置
+    -- 缩小按钮（主界面变为小按钮）
+    local minimizeBtn = CreateFrame("Button", "RAMainMinimizeButton", frame, "UIPanelButtonTemplate")
+    minimizeBtn:SetPoint("RIGHT", closeBtn, "LEFT", -5, 0)
+    minimizeBtn:SetWidth(60)
+    minimizeBtn:SetHeight(30)
+    minimizeBtn:SetText(L["缩小"])
+    minimizeBtn:SetScript("OnClick", function()
+        -- 记录当前主界面位置，将小按钮放到同一位置
+        local point, relativeTo, relativePoint, xOfs, yOfs = frame:GetPoint()
         if miniButtonDragFrame then
             miniButtonDragFrame:ClearAllPoints()
             miniButtonDragFrame:SetPoint(point or "CENTER", relativeTo or UIParent, relativePoint or "CENTER", xOfs or 0, yOfs or 0)
-            -- miniButtonDragFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0) -- 默认居中
             miniButtonDragFrame:Show()
         end
-        f:Hide()
+        frame:Hide()
     end)
-    f.buttons["minimizeButton"] = minimizeButton
+    frame.buttons["minimize"] = minimizeBtn
 
-    f:Hide()
-    self.mf = f -- 将创建好的框架赋值给 self.mf
+    frame:Hide()
+    self.mainFrame = frame
 
-    -- 创建缩小后的按钮（miniButton），初始隐藏
+    -- 小按钮外层Frame（用于缩小模式）
     if not miniButton then
-        -- 新增：创建可拖动的外层 Frame
         miniButtonDragFrame = CreateFrame("Frame", "RAMainMiniButtonDragFrame", UIParent)
-        miniButtonDragFrame:SetWidth(90)  -- 比 miniButton 稍大
+        miniButtonDragFrame:SetWidth(90)
         miniButtonDragFrame:SetHeight(50)
-        -- 不再在这里设置位置，缩小时动态设置
         miniButtonDragFrame:SetMovable(true)
         miniButtonDragFrame:EnableMouse(true)
         miniButtonDragFrame:RegisterForDrag("LeftButton")
@@ -213,46 +199,44 @@ function RAMain:SetUpMainFrame()
         miniButtonDragFrame:SetScript("OnDragStart", function() miniButtonDragFrame:StartMoving() end)
         miniButtonDragFrame:SetScript("OnDragStop", function() miniButtonDragFrame:StopMovingOrSizing() end)
         miniButtonDragFrame:Hide()
-
         miniButtonDragFrame:SetBackdrop({
-            bgFile = "Interface\\RaidFrame\\UI-RaidFrame-GroupBg", -- 背景贴图
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",   -- 边框贴图
+            bgFile = "Interface\\RaidFrame\\UI-RaidFrame-GroupBg",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
             edgeSize = 16,
-            insets = { left = 5, right = 5, top = 5, bottom = 5 }  -- 内边距
+            insets = { left = 5, right = 5, top = 5, bottom = 5 }
         })
-        miniButtonDragFrame:SetAlpha(0.7)                                            -- 透明度
-        miniButtonDragFrame:SetFrameStrata("MEDIUM")                                    -- 框架层级
+        miniButtonDragFrame:SetAlpha(0.7)
+        miniButtonDragFrame:SetFrameStrata("MEDIUM")
 
-        -- miniButton 作为子元素
+        -- 小按钮本体
         miniButton = CreateFrame("Button", "RAMainMiniButton", miniButtonDragFrame, "UIPanelButtonTemplate")
         miniButton:SetWidth(70)
         miniButton:SetHeight(30)
-        miniButton:SetText(L["检测还原"] or "检测还原")
+        miniButton:SetText(L["检测还原"])
         miniButton:SetPoint("CENTER", miniButtonDragFrame, "CENTER", 0, 0)
         miniButton:SetScript("OnClick", function()
-            if self.mf then self.mf:Show() end
+            if self.mainFrame then self.mainFrame:Show() end
             miniButtonDragFrame:Hide()
         end)
-        -- miniButton:Hide() -- 由外层控制显示
-
-        -- 方便后续引用
         self.miniButtonDragFrame = miniButtonDragFrame
     end
 end
 
-function RAMain:UpdateCheckDebuff(debuffName)
-    -- 停止旧的检测
-    self:CancelScheduledEvent(DEBUFF_CHECK_EVENT)
-    currentDebuffNames = nil
+-- 开始或停止debuff检测
+-- debuffInput: 用户输入的debuff名称（可多个，用/分隔）
+function RAMain:StartDebuffCheck(debuffInput)
+    self:CancelScheduledEvent(DEBUFF_CHECK_EVENT) -- 取消之前的定时检测
+    activeDebuffNames = nil
 
-    if not debuffName or debuffName == "" or debuffName == L["输入debuff名称"] then
+    -- 未输入或输入为空，停止检测
+    if not debuffInput or debuffInput == "" or debuffInput == L["输入debuff名称"] then
         self:UpdateStats(false, nil)
         return
     end
 
-    -- 支持多debuff, 用/分割
+    -- 解析输入，支持多个debuff（用/分隔）
     local debuffList = {}
-    for name in string.gmatch(debuffName, "([^/]+)") do
+    for name in string.gmatch(debuffInput, "([^/]+)") do
         name = strtrim(name)
         if name ~= "" then
             table.insert(debuffList, name)
@@ -262,42 +246,43 @@ function RAMain:UpdateCheckDebuff(debuffName)
         self:UpdateStats(false, nil)
         return
     end
-    currentDebuffNames = debuffList
+    activeDebuffNames = debuffList
 
-    -- 使用 AceEvent 的定时器，每秒检测一次
+    -- 定时检测，每秒扫描一次
     self:ScheduleRepeatingEvent(DEBUFF_CHECK_EVENT, function()
-        RARaid:Scan(currentDebuffNames)
-        RAMain:CheckAndWhisper(currentDebuffNames)
+        RARaid:Scan(activeDebuffNames)
+        RAMain:NotifyDebuffedPlayers(activeDebuffNames)
     end, 1)
 
     self:UpdateStats(true, table.concat(debuffList, " / "))
 end
 
-function RAMain:CheckAndWhisper(debuffNames)
-    -- debuffNames: table
+-- 检查团队成员是否中了指定debuff，并私聊提醒
+function RAMain:NotifyDebuffedPlayers(debuffNames)
     if type(debuffNames) == "string" then
         debuffNames = { debuffNames }
     end
-    for name, debuffs in pairs(RARaid.raidDebuffs) do
-        local hasDebuff = false
-        for _, d in ipairs(debuffs) do
+    for playerName, debuffs in pairs(RARaid.raidDebuffs) do
+        local matchedDebuff = nil
+        -- 检查该玩家是否中了目标debuff
+        for _, debuff in ipairs(debuffs) do
             for _, targetDebuff in ipairs(debuffNames) do
-                if d == targetDebuff then
-                    hasDebuff = targetDebuff
+                if debuff == targetDebuff then
+                    matchedDebuff = targetDebuff
                     break
                 end
             end
-            if hasDebuff then break end
+            if matchedDebuff then break end
         end
-        if hasDebuff then
+        if matchedDebuff then
             local now = GetTime()
-            if not whisperCooldowns[name] or now - whisperCooldowns[name] > RaidAlert.notificationCooldownSeconds then
-                SendChatMessage("你中了debuff: "..hasDebuff .. "  (时间: " .. DV_Date() .. ")", "WHISPER", nil, name)
-                whisperCooldowns[name] = now
-
-                -- 发送后1秒关闭WIM窗口，只针对刚刚私聊的人
+            -- 冷却时间内不重复提醒
+            if not whisperCooldowns[playerName] or now - whisperCooldowns[playerName] > RaidAlert.notificationCooldownSeconds then
+                SendChatMessage("你中了debuff: "..matchedDebuff .. "  (时间: " .. DV_Date() .. ")", "WHISPER", nil, playerName)
+                whisperCooldowns[playerName] = now
+                -- 如果有WIM聊天插件，自动关闭会话窗口
                 if WIM_CloseConvo then
-                    local closeName = name
+                    local closeName = playerName
                     self:ScheduleEvent(function()
                         WIM_CloseConvo(closeName)
                     end, 1)
@@ -307,29 +292,23 @@ function RAMain:CheckAndWhisper(debuffNames)
     end
 end
 
--- 更新统计数据
-function RAMain:UpdateStats(isOpen, debuffName)
-    local open = L["未检测"]
-    if isOpen == true then
-        open = L["正在检测"]
-    else
-        open = L["未检测"]
-    end
-    statsText:SetText(string.format(L["当前状态: %s, 当前检测名称: %s"], open, debuffName or L["无"]))
+-- 更新界面状态显示
+-- isActive: 是否正在检测
+-- debuffName: 当前检测的debuff名称
+function RAMain:UpdateStats(isActive, debuffName)
+    local status = isActive and L["正在检测"] or L["未检测"]
+    statsText:SetText(string.format(L["当前状态: %s, 当前检测名称: %s"], status, debuffName or L["无"]))
     statsFrame.text = statsText
 end
 
--- 注册监听聊天事件
+-- 注册聊天事件（团队、团队领袖、系统频道）
 function RAMain:RegisterChatEvents()
     self:RegisterEvent("CHAT_MSG_RAID", "HandleChatMessage")
     self:RegisterEvent("CHAT_MSG_RAID_LEADER", "HandleChatMessage")
     self:RegisterEvent("CHAT_MSG_SYSTEM", "HandleChatMessage")
-
 end
 
+-- 聊天消息处理函数
 function RAMain:HandleChatMessage(msg, sender)
-    -- 这里可以根据需要处理聊天消息
     DEFAULT_CHAT_FRAME:AddMessage("收到聊天消息: " .. tostring(msg) .. " 来自: " .. tostring(sender))
-    if msg == "你加入了一个团队。" then
-    end
 end

@@ -1,6 +1,6 @@
 -- 主界面相关常量
-local FRAME_HEIGHT = 180      -- 主界面高度
-local FRAME_WIDTH = 400       -- 主界面宽度
+local FRAME_HEIGHT = 180 -- 主界面高度
+local FRAME_WIDTH = 400  -- 主界面宽度
 
 -- 主界面及其控件引用
 local statsFrame, searchBox, statsText, cooldownSlider
@@ -12,12 +12,12 @@ local activeDebuffNames = nil -- 当前激活的debuff名称列表
 
 -- RAMain 模块定义，继承 Ace2 多个库
 RAMain = AceLibrary("AceAddon-2.0"):new(
-    "AceEvent-2.0",    -- 事件处理
-    "AceComm-2.0",     -- 通信
-    "AceDB-2.0",       -- 数据库
-    "AceDebug-2.0",    -- 调试
-    "AceConsole-2.0",  -- 命令行
-    "AceHook-2.1"      -- 钩子
+    "AceEvent-2.0",   -- 事件处理
+    "AceComm-2.0",    -- 通信
+    "AceDB-2.0",      -- 数据库
+    "AceDebug-2.0",   -- 调试
+    "AceConsole-2.0", -- 命令行
+    "AceHook-2.1"     -- 钩子
 )
 
 -- 获取本地化库实例
@@ -166,6 +166,95 @@ function RAMain:CreateMainFrame()
     _G[cooldownSlider:GetName() .. 'High']:SetText("60")
     _G[cooldownSlider:GetName() .. 'Text']:SetText(L["通知间隔:"] .. " " .. cooldownSlider:GetValue() .. L["秒"])
 
+    -- 最近监听debuff的ScrollFrame
+    local scrollFrame = CreateFrame("ScrollFrame", "RARecentDebuffScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetWidth(160)
+    scrollFrame:SetHeight(60)
+    scrollFrame:SetPoint("LEFT", cooldownSlider, "RIGHT", 10, 0)
+    scrollFrame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 10,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    scrollFrame:SetAlpha(0.8)
+
+    local content = CreateFrame("Frame", nil, scrollFrame)
+    content:SetWidth(150)
+    content:SetHeight(60)
+    scrollFrame:SetScrollChild(content)
+    frame.recentDebuffScrollFrame = scrollFrame
+    frame.recentDebuffContent = content
+
+    function RAMain:UpdateRecentDebuffList()
+        local parent = self.mainFrame and self.mainFrame.recentDebuffContent
+        local scrollFrame = self.mainFrame and self.mainFrame.recentDebuffScrollFrame
+        if not parent then return end
+        -- 清理旧的按钮
+        if parent.buttons then
+            for _, btn in ipairs(parent.buttons) do
+                btn:Hide()
+                btn:SetParent(nil)
+            end
+        end
+        parent.buttons = {}
+        local y = -2
+        local btnHeight = 20
+        for i, debuff in ipairs(RaidAlertRecentDebuffs) do
+            local thisDebuff = debuff
+            local btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+            btn:SetWidth(130)
+            btn:SetHeight(18)
+            btn:SetPoint("TOPLEFT", parent, "TOPLEFT", 2, y)
+            btn:SetText(tostring(thisDebuff) or "")
+            btn:SetScript("OnClick", function()
+                searchBox:SetText(tostring(thisDebuff) or "")
+                searchBox:ClearFocus()
+            end)
+            -- 删除按钮
+            local delBtn = CreateFrame("Button", nil, btn, "UIPanelCloseButton")
+            delBtn:SetWidth(18)
+            delBtn:SetHeight(18)
+            delBtn:SetPoint("RIGHT", btn, "RIGHT", 18, 0)
+            delBtn:SetScript("OnClick", function()
+                -- 查找并删除对应debuff
+                for idx, v in ipairs(RaidAlertRecentDebuffs) do
+                    if v == thisDebuff then
+                        table.remove(RaidAlertRecentDebuffs, idx)
+                        if RaidAlert and RaidAlert.SaveRecentDebuffs then
+                            RaidAlert:SaveRecentDebuffs()
+                        end
+                        break
+                    end
+                end
+                RAMain:UpdateRecentDebuffList()
+            end)
+            btn.delBtn = delBtn
+            btn:Show()
+            table.insert(parent.buttons, btn)
+            y = y - btnHeight
+        end
+        -- 动态调整content高度
+        local totalHeight = math.max(getn(RaidAlertRecentDebuffs) * btnHeight, 60)
+        parent:SetHeight(totalHeight)
+        if scrollFrame then
+            scrollFrame:UpdateScrollChildRect()
+            local scrollbar = _G[scrollFrame:GetName() .. "ScrollBar"]
+            if scrollbar then
+                local min, max = scrollbar:GetMinMaxValues()
+                if max > 0 then
+                    scrollbar:Show()
+                else
+                    scrollbar:Hide()
+                end
+            end
+        end
+
+        if RaidAlert and RaidAlert.SaveRecentDebuffs then
+            RaidAlert:SaveRecentDebuffs()
+        end
+    end
+
     -- 缩小按钮（主界面变为小按钮）
     local minimizeBtn = CreateFrame("Button", "RAMainMinimizeButton", frame, "UIPanelButtonTemplate")
     minimizeBtn:SetPoint("RIGHT", closeBtn, "LEFT", -5, 0)
@@ -177,7 +266,8 @@ function RAMain:CreateMainFrame()
         local point, relativeTo, relativePoint, xOfs, yOfs = frame:GetPoint()
         if miniButtonDragFrame then
             miniButtonDragFrame:ClearAllPoints()
-            miniButtonDragFrame:SetPoint(point or "CENTER", relativeTo or UIParent, relativePoint or "CENTER", xOfs or 0, yOfs or 0)
+            miniButtonDragFrame:SetPoint(point or "CENTER", relativeTo or UIParent, relativePoint or "CENTER", xOfs or 0,
+                yOfs or 0)
             miniButtonDragFrame:Show()
         end
         frame:Hide()
@@ -220,26 +310,47 @@ function RAMain:CreateMainFrame()
         end)
         self.miniButtonDragFrame = miniButtonDragFrame
     end
+
+     -- 新增：刷新最近debuff列表
+     if self.mainFrame and self.mainFrame.UpdateRecentDebuffList then
+        self.mainFrame:UpdateRecentDebuffList()
+    elseif RAMain.UpdateRecentDebuffList then
+        RAMain:UpdateRecentDebuffList()
+    end
+    
 end
 
 -- 开始或停止debuff检测
 -- debuffInput: 用户输入的debuff名称（可多个，用/分隔）
 function RAMain:StartDebuffCheck(debuffInput)
-    self:CancelScheduledEvent(DEBUFF_CHECK_EVENT) -- 取消之前的定时检测
+    self:CancelScheduledEvent(DEBUFF_CHECK_EVENT)
     activeDebuffNames = nil
 
-    -- 未输入或输入为空，停止检测
     if not debuffInput or debuffInput == "" or debuffInput == L["输入debuff名称"] then
         self:UpdateStats(false, nil)
         return
     end
 
-    -- 解析输入，支持多个debuff（用/分隔）
     local debuffList = {}
+
     for name in string.gmatch(debuffInput, "([^/]+)") do
         name = strtrim(name)
         if name ~= "" then
             table.insert(debuffList, name)
+            -- 新增：记录到 RaidAlertRecentDebuffs
+            local exists = false
+            for _, v in ipairs(RaidAlertRecentDebuffs) do
+                if v == name then
+                    exists = true
+                    break
+                end
+            end
+            if not exists then
+                table.insert(RaidAlertRecentDebuffs, name)
+                if RaidAlert and RaidAlert.SaveRecentDebuffs then
+                    RaidAlert:SaveRecentDebuffs()
+                end
+            end
         end
     end
     if getn(debuffList) == 0 then
@@ -247,6 +358,13 @@ function RAMain:StartDebuffCheck(debuffInput)
         return
     end
     activeDebuffNames = debuffList
+
+    -- 新增：刷新最近debuff列表
+    if self.mainFrame and self.mainFrame.UpdateRecentDebuffList then
+        self.mainFrame:UpdateRecentDebuffList()
+    elseif RAMain.UpdateRecentDebuffList then
+        RAMain:UpdateRecentDebuffList()
+    end
 
     -- 定时检测，每秒扫描一次
     self:ScheduleRepeatingEvent(DEBUFF_CHECK_EVENT, function()
@@ -271,7 +389,8 @@ function RAMain:NotifyDebuffedPlayers(debuffNames)
                     -- 冷却时间内不重复提醒同一debuff
                     local cooldownKey = playerName .. ":" .. debuff
                     if not whisperCooldowns[cooldownKey] or now - whisperCooldowns[cooldownKey] > RaidAlert.notificationCooldownSeconds then
-                        SendChatMessage("你中了debuff: "..debuff .. "  (时间: " .. DV_Date() .. ")", "WHISPER", nil, playerName)
+                        SendChatMessage("你中了debuff: " .. debuff .. "  (时间: " .. DV_Date() .. ")", "WHISPER", nil,
+                            playerName)
                         whisperCooldowns[cooldownKey] = now
                         -- 如果有WIM聊天插件，自动关闭会话窗口
                         if WIM_CloseConvo then

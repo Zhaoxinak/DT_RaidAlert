@@ -6,8 +6,8 @@
 ## X-Website: https://github.com/Zhaoxinak/DT_RaidAlert
 ## Version: 1.0
 ## Dependencies: !Libs
-# SavedVariables: raidData, playerGuildData
-# SavedVariablesPerCharacter: ownGuild, startRaidTime, raidStartTimeString, uniqueID
+## SavedVariables: RaidAlertRecentDebuffs
+# SavedVariablesPerCharacter: RaidAlertRecentDebuffs
 
 Tools.lua
 

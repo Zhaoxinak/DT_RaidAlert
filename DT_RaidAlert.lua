@@ -41,6 +41,7 @@ function RaidAlert:OnInitialize()
         yOfs = {},           -- 主窗口 Y 轴偏移量
         point = {},          -- 主窗口 锚点
         relativePoint = {},  -- 主窗口 相对锚点
+        recentDebuffs = {},  -- 新增：保存最近debuff
     })
 
     -- 启用当前角色的配置文件
@@ -89,11 +90,24 @@ end
 
 -- 配置文件启用时调用
 function RaidAlert:OnProfileEnable()
-    -- 将当前配置文件的引用赋值给 self.opt，方便访问
     self.opt = self.db.profile
+    -- 新增：同步 SavedVariables 到全局变量
+    if type(self.opt.recentDebuffs) ~= "table" then
+        self.opt.recentDebuffs = {}
+    end
+    -- 始终让全局变量 RaidAlertRecentDebuffs 指向数据库内容
+    RaidAlertRecentDebuffs = RaidAlertRecentDebuffs or self.opt.recentDebuffs or {}
     -- 可能需要通知 RBMain 更新其使用的配置
     if RAMain and RAMain.OnProfileUpdate then
         RAMain:OnProfileUpdate(self.opt)
+    end
+end
+
+-- 新增：保存 recentDebuffs 到数据库
+function RaidAlert:SaveRecentDebuffs()
+    if self.opt then
+        -- 强制同步全局变量到数据库
+        self.opt.recentDebuffs = RaidAlertRecentDebuffs
     end
 end
 

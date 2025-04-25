@@ -263,29 +263,25 @@ function RAMain:NotifyDebuffedPlayers(debuffNames)
         debuffNames = { debuffNames }
     end
     for playerName, debuffs in pairs(RARaid.raidDebuffs) do
-        local matchedDebuff = nil
-        -- 检查该玩家是否中了目标debuff
+        local notifiedDebuffs = {}
+        local now = GetTime()
         for _, debuff in ipairs(debuffs) do
             for _, targetDebuff in ipairs(debuffNames) do
-                if debuff == targetDebuff then
-                    matchedDebuff = targetDebuff
-                    break
-                end
-            end
-            if matchedDebuff then break end
-        end
-        if matchedDebuff then
-            local now = GetTime()
-            -- 冷却时间内不重复提醒
-            if not whisperCooldowns[playerName] or now - whisperCooldowns[playerName] > RaidAlert.notificationCooldownSeconds then
-                SendChatMessage("你中了debuff: "..matchedDebuff .. "  (时间: " .. DV_Date() .. ")", "WHISPER", nil, playerName)
-                whisperCooldowns[playerName] = now
-                -- 如果有WIM聊天插件，自动关闭会话窗口
-                if WIM_CloseConvo then
-                    local closeName = playerName
-                    self:ScheduleEvent(function()
-                        WIM_CloseConvo(closeName)
-                    end, 1)
+                if debuff == targetDebuff and not notifiedDebuffs[debuff] then
+                    -- 冷却时间内不重复提醒同一debuff
+                    local cooldownKey = playerName .. ":" .. debuff
+                    if not whisperCooldowns[cooldownKey] or now - whisperCooldowns[cooldownKey] > RaidAlert.notificationCooldownSeconds then
+                        SendChatMessage("你中了debuff: "..debuff .. "  (时间: " .. DV_Date() .. ")", "WHISPER", nil, playerName)
+                        whisperCooldowns[cooldownKey] = now
+                        -- 如果有WIM聊天插件，自动关闭会话窗口
+                        if WIM_CloseConvo then
+                            local closeName = playerName
+                            self:ScheduleEvent(function()
+                                WIM_CloseConvo(closeName)
+                            end, 1)
+                        end
+                    end
+                    notifiedDebuffs[debuff] = true
                 end
             end
         end

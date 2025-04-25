@@ -22,24 +22,37 @@ function RARaid:OnInitialize()
 end
 
 -- 扫描团队成员信息，更新
-function RARaid:Scan(targetDebuff)
+function RARaid:Scan(targetDebuffs)
+    -- targetDebuffs: table 或 string
+    local debuffList = {}
+    if type(targetDebuffs) == "table" then
+        for _, v in ipairs(targetDebuffs) do
+            table.insert(debuffList, v)
+        end
+    elseif type(targetDebuffs) == "string" and targetDebuffs ~= "" then
+        table.insert(debuffList, targetDebuffs)
+    end
+
     for i = 1, GetNumRaidMembers() do
         local name = GetRaidRosterInfo(i)
         local unit = "raid"..i
         RARaid.raidDebuffs[name] = {}
-        if targetDebuff then
+        if getn(debuffList) > 0 then
+            -- 检查buff
+            for _, debuffName in ipairs(debuffList) do
+                if IsBuffActive(debuffName, unit) then
+                    table.insert(RARaid.raidDebuffs[name], debuffName)
+                end
+            end
+            -- 检查debuff
             local j = 1
             while true do
-               
-                if IsBuffActive(targetDebuff, unit) then
-                    table.insert(RARaid.raidDebuffs[name], targetDebuff)
-                end
-
                 local debuffName = UnitDebuff(unit, j)
-                -- DEFAULT_CHAT_FRAME:AddMessage("UnitDebuff" .. unit .. j .. (debuffName or "nil"))
                 if not debuffName then break end
-                if debuffName == targetDebuff then
-                    
+                for _, targetDebuff in ipairs(debuffList) do
+                    if debuffName == targetDebuff then
+                        table.insert(RARaid.raidDebuffs[name], debuffName)
+                    end
                 end
                 j = j + 1
             end

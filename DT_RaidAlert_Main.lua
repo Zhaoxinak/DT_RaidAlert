@@ -8,7 +8,7 @@ local miniButton -- 缩小后的按钮
 local miniButtonDragFrame -- 缩小按钮的外层 Frame
 -- 定时检测事件名
 local DEBUFF_CHECK_EVENT = "RA_DebuffCheckEvent"
-local currentDebuffName = nil
+local currentDebuffNames = nil -- 支持多debuff
 
 -- 定义 RAMain 模块表
 RAMain = AceLibrary("AceAddon-2.0"):new(
@@ -243,37 +243,65 @@ end
 function RAMain:UpdateCheckDebuff(debuffName)
     -- 停止旧的检测
     self:CancelScheduledEvent(DEBUFF_CHECK_EVENT)
-    currentDebuffName = nil
+    currentDebuffNames = nil
 
     if not debuffName or debuffName == "" or debuffName == L["输入debuff名称"] then
         self:UpdateStats(false, nil)
         return
     end
 
-    currentDebuffName = debuffName
+    -- 支持多debuff, 用/分割
+    local debuffList = {}
+    for name in string.gmatch(debuffName, "([^/]+)") do
+        name = strtrim(name)
+        if name ~= "" then
+            table.insert(debuffList, name)
+        end
+    end
+    if getn(debuffList) == 0 then
+        self:UpdateStats(false, nil)
+        return
+    end
+    currentDebuffNames = debuffList
+
     -- 使用 AceEvent 的定时器，每秒检测一次
     self:ScheduleRepeatingEvent(DEBUFF_CHECK_EVENT, function()
-        RARaid:Scan(currentDebuffName)
-        RAMain:CheckAndWhisper(currentDebuffName)
+        RARaid:Scan(currentDebuffNames)
+        RAMain:CheckAndWhisper(currentDebuffNames)
     end, 1)
 
-    self:UpdateStats(true, debuffName)
+    self:UpdateStats(true, table.concat(debuffList, " / "))
 end
 
-function RAMain:CheckAndWhisper(debuffName)
+function RAMain:CheckAndWhisper(debuffNames)
+    -- debuffNames: table
+    if type(debuffNames) == "string" then
+        debuffNames = { debuffNames }
+    end
     for name, debuffs in pairs(RARaid.raidDebuffs) do
         local hasDebuff = false
         for _, d in ipairs(debuffs) do
-            if d == debuffName then
-                hasDebuff = true
-                break
+            for _, targetDebuff in ipairs(debuffNames) do
+                if d == targetDebuff then
+                    hasDebuff = targetDebuff
+                    break
+                end
             end
+            if hasDebuff then break end
         end
         if hasDebuff then
             local now = GetTime()
             if not whisperCooldowns[name] or now - whisperCooldowns[name] > RaidAlert.notificationCooldownSeconds then
-                SendChatMessage("你中了debuff: "..debuffName .. "  (时间: " .. DV_Date() .. ")", "WHISPER", nil, name)
+                SendChatMessage("你中了debuff: "..hasDebuff .. "  (时间: " .. DV_Date() .. ")", "WHISPER", nil, name)
                 whisperCooldowns[name] = now
+
+                -- 发送后1秒关闭WIM窗口，只针对刚刚私聊的人
+                if WIM_CloseConvo then
+                    local closeName = name
+                    self:ScheduleEvent(function()
+                        WIM_CloseConvo(closeName)
+                    end, 1)
+                end
             end
         end
     end
@@ -281,14 +309,12 @@ end
 
 -- 更新统计数据
 function RAMain:UpdateStats(isOpen, debuffName)
-
     local open = L["未检测"]
     if isOpen == true then
         open = L["正在检测"]
     else
         open = L["未检测"]
     end
-
     statsText:SetText(string.format(L["当前状态: %s, 当前检测名称: %s"], open, debuffName or L["无"]))
     statsFrame.text = statsText
 end

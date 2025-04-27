@@ -4,10 +4,43 @@
 ## Notes:|R |cff33ffccBoss战Debuff提醒，作者：德兔（乌龟拉风服务器）。|N命令：/rat
 ## Author: 德兔（乌龟拉风服务器）
 ## X-Website: https://github.com/Zhaoxinak/DT_RaidAlert
-## Version: 1.0
-## Dependencies: !Libs
+## Version: 1.4
+# Dependencies: !Libs
 ## SavedVariables: RaidAlertRecentDebuffs
 # SavedVariablesPerCharacter: RaidAlertRecentDebuffs
+
+## OptionalDeps: MyLib, Ace2, FuBarPlugin-2.0, Babble-2.2, Compost-2.0, Dewdrop-2.0, Tablet-2.0, Surface-1.0, SpellStatus-1.0, SpellCache-1.0, Gratuity-2.0, Deformat-2.0, IsBuffActive
+## X-Embeds: MyLib, Ace2, FuBarPlugin-2.0, Babble-2.2, Compost-2.0, Dewdrop-2.0, Tablet-2.0, Surface-1.0
+
+
+Libs\MyLib\api\luaAPI.lua
+Libs\MyLib\api\wowAPI.lua
+
+Libs\Ace2\AceLibrary\AceLibrary.lua
+
+Libs\Ace2\AceOO-2.0\AceOO-2.0.lua
+Libs\Ace2\AceComm-2.0\AceComm-2.0.lua
+Libs\Ace2\AceAddon-2.0\AceAddon-2.0.lua
+Libs\Ace2\AceEvent-2.0\AceEvent-2.0.lua
+Libs\Ace2\AceDB-2.0\AceDB-2.0.lua
+Libs\Ace2\AceDebug-2.0\AceDebug-2.0.lua
+Libs\Ace2\AceConsole-2.0\AceConsole-2.0.lua
+Libs\Ace2\AceHook-2.1\AceHook-2.1.lua
+Libs\Ace2\AceLocale-2.2\AceLocale-2.2.lua
+Libs\FuBarPlugin-2.0\FuBarPlugin-2.0.lua
+Libs\Babble\Babble-Spell-2.2.lua
+Libs\Compost-2.0\Compost-2.0.lua
+Libs\Dewdrop-2.0\Dewdrop-2.0.lua
+Libs\Tablet-2.0\Tablet-2.0.lua
+Libs\Surface-1.0\Surface-1.0.lua
+Libs\Deformat-2.0\Deformat-2.0.lua
+Libs\Gratuity-2.0\Gratuity-2.0.lua
+Libs\SpellCache-1.0\SpellCache-1.0.lua
+Libs\SpellStatus-1.0\SpellStatus-1.0.lua
+
+Libs\IsBuffActive\IsBuffActive.xml
+Libs\IsBuffActive\IsBuffActive.lua
+
 
 Tools.lua
 

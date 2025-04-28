@@ -1,6 +1,11 @@
+-- 确保最近debuff列表变量已初始化
+if not RaidAlertRecentDebuffs then
+    RaidAlertRecentDebuffs = {}
+end
+
 -- 主界面相关常量
-local FRAME_HEIGHT = 180 -- 主界面高度
-local FRAME_WIDTH = 400  -- 主界面宽度
+local FRAME_HEIGHT = 260 -- 主界面高度（适当增加）
+local FRAME_WIDTH = 480  -- 主界面宽度（适当增加）
 
 -- 主界面及其控件引用
 local statsFrame, searchBox, statsText, cooldownSlider
@@ -9,6 +14,9 @@ local miniButton, miniButtonDragFrame
 -- 定时检测事件名
 local DEBUFF_CHECK_EVENT = "RA_DebuffCheckEvent"
 local activeDebuffNames = nil -- 当前激活的debuff名称列表
+
+-- 新增：检测来源选择框引用
+local sourceChecks = {}
 
 -- RAMain 模块定义，继承 Ace2 多个库
 RAMain = AceLibrary("AceAddon-2.0"):new(
@@ -105,9 +113,133 @@ function RAMain:CreateMainFrame()
     titleLine:SetPoint("TOPLEFT", statsText, "BOTTOMLEFT", 0, 2)
     frame.textures["titleLine"] = titleLine
 
+    -- 新增：检测来源提示文字
+    local sourceTip = frame:CreateFontString(nil, "OVERLAY")
+    sourceTip:SetFontObject("GameFontNormal")
+    sourceTip:SetPoint("TOPLEFT", titleLine, "BOTTOMLEFT", 0, -4)
+    sourceTip:SetText(L["请选择检测来源"])
+    frame.fontStrs["sourceTip"] = sourceTip
+
+    -- 新增：检测来源选择框（团员，团队，大喊，Boss喊话）
+    -- 不使用循环，单独写每个CheckButton
+
+    -- 团员
+    local partyCheck = CreateFrame("CheckButton", "RASourceCheck_party", frame, "UICheckButtonTemplate")
+    partyCheck:SetPoint("TOPLEFT", sourceTip, "BOTTOMLEFT", 0, -6)
+    partyCheck:SetWidth(24)
+    partyCheck:SetHeight(24)
+    if not partyCheck.Text then
+        partyCheck.text = partyCheck:CreateFontString(nil, "OVERLAY")
+        partyCheck.text:SetFontObject("GameFontNormal")
+        partyCheck.text:SetPoint("LEFT", partyCheck, "RIGHT", 2, 0)
+        partyCheck.text:SetText(L["团员"])
+    else
+        partyCheck.Text:SetText(L["团员"])
+    end
+    if RaidAlert["source_party"] == nil then
+        RaidAlert["source_party"] = true
+    end
+    partyCheck:SetChecked(RaidAlert["source_party"])
+    partyCheck:SetScript("OnClick", function()
+        RaidAlert["source_party"] = partyCheck:GetChecked()
+        partyCheck:SetChecked(RaidAlert["source_party"])
+    end)
+    sourceChecks["party"] = partyCheck
+
+    -- 团队
+    local raidCheck = CreateFrame("CheckButton", "RASourceCheck_raid", frame, "UICheckButtonTemplate")
+    raidCheck:SetPoint("LEFT", partyCheck, "RIGHT", 70, 0)
+    raidCheck:SetWidth(24)
+    raidCheck:SetHeight(24)
+    if not raidCheck.Text then
+        raidCheck.text = raidCheck:CreateFontString(nil, "OVERLAY")
+        raidCheck.text:SetFontObject("GameFontNormal")
+        raidCheck.text:SetPoint("LEFT", raidCheck, "RIGHT", 2, 0)
+        raidCheck.text:SetText(L["团队"])
+    else
+        raidCheck.Text:SetText(L["团队"])
+    end
+    if RaidAlert["source_raid"] == nil then
+        RaidAlert["source_raid"] = false
+    end
+    raidCheck:SetChecked(RaidAlert["source_raid"])
+    raidCheck:SetScript("OnClick", function()
+        RaidAlert["source_raid"] = raidCheck:GetChecked()
+        raidCheck:SetChecked(RaidAlert["source_raid"])
+    end)
+    sourceChecks["raid"] = raidCheck
+
+    -- 大喊
+    local yellCheck = CreateFrame("CheckButton", "RASourceCheck_yell", frame, "UICheckButtonTemplate")
+    yellCheck:SetPoint("LEFT", raidCheck, "RIGHT", 70, 0)
+    yellCheck:SetWidth(24)
+    yellCheck:SetHeight(24)
+    if not yellCheck.Text then
+        yellCheck.text = yellCheck:CreateFontString(nil, "OVERLAY")
+        yellCheck.text:SetFontObject("GameFontNormal")
+        yellCheck.text:SetPoint("LEFT", yellCheck, "RIGHT", 2, 0)
+        yellCheck.text:SetText(L["大喊"])
+    else
+        yellCheck.Text:SetText(L["大喊"])
+    end
+    if RaidAlert["source_yell"] == nil then
+        RaidAlert["source_yell"] = false
+    end
+    yellCheck:SetChecked(RaidAlert["source_yell"])
+    yellCheck:SetScript("OnClick", function()
+        RaidAlert["source_yell"] = yellCheck:GetChecked()
+        yellCheck:SetChecked(RaidAlert["source_yell"])
+    end)
+    sourceChecks["yell"] = yellCheck
+
+    -- Boss喊话
+    local bossCheck = CreateFrame("CheckButton", "RASourceCheck_boss", frame, "UICheckButtonTemplate")
+    bossCheck:SetPoint("LEFT", yellCheck, "RIGHT", 70, 0)
+    bossCheck:SetWidth(24)
+    bossCheck:SetHeight(24)
+    if not bossCheck.Text then
+        bossCheck.text = bossCheck:CreateFontString(nil, "OVERLAY")
+        bossCheck.text:SetFontObject("GameFontNormal")
+        bossCheck.text:SetPoint("LEFT", bossCheck, "RIGHT", 2, 0)
+        bossCheck.text:SetText(L["Boss喊话"])
+    else
+        bossCheck.Text:SetText(L["Boss喊话"])
+    end
+    if RaidAlert["source_boss"] == nil then
+        RaidAlert["source_boss"] = false
+    end
+    bossCheck:SetChecked(RaidAlert["source_boss"])
+    bossCheck:SetScript("OnClick", function()
+        RaidAlert["source_boss"] = bossCheck:GetChecked()
+        bossCheck:SetChecked(RaidAlert["source_boss"])
+    end)
+    sourceChecks["boss"] = bossCheck
+
+    local firstSourceCheck = partyCheck
+
+    -- 冷却时间滑块（设置通知间隔）
+    cooldownSlider = CreateFrame("Slider", "RAStatsCooldownSlider", frame, "OptionsSliderTemplate")
+    cooldownSlider:SetOrientation("HORIZONTAL")
+    cooldownSlider:SetWidth(180)
+    cooldownSlider:SetHeight(20)
+    -- 修改锚点：放在团员选择框下方
+    cooldownSlider:SetPoint("TOPLEFT", firstSourceCheck, "BOTTOMLEFT", 0, -20)
+    cooldownSlider:SetMinMaxValues(1, 60)
+    cooldownSlider:SetValueStep(1)
+    cooldownSlider:SetValue(RaidAlert and RaidAlert.notificationCooldownSeconds or 15)
+    cooldownSlider:SetScript("OnValueChanged", function()
+        if RaidAlert then
+            RaidAlert.notificationCooldownSeconds = arg1
+        end
+        _G[cooldownSlider:GetName() .. 'Text']:SetText(L["通知间隔:"] .. " " .. arg1 .. L["秒"])
+    end)
+    _G[cooldownSlider:GetName() .. 'Low']:SetText("1")
+    _G[cooldownSlider:GetName() .. 'High']:SetText("60")
+    _G[cooldownSlider:GetName() .. 'Text']:SetText(L["通知间隔:"] .. " " .. cooldownSlider:GetValue() .. L["秒"])
+
     -- 搜索框（输入debuff名称）
     searchBox = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
-    searchBox:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 10, 5)
+    searchBox:SetPoint("TOPLEFT", cooldownSlider, "BOTTOMLEFT", 0, -30)
     searchBox:SetWidth(150)
     searchBox:SetHeight(30)
     searchBox:SetAutoFocus(false)
@@ -121,7 +253,15 @@ function RAMain:CreateMainFrame()
     searchBtn:SetText(L["开启检测"])
     searchBtn:SetScript("OnClick", function()
         local query = searchBox:GetText()
-        RAMain:StartDebuffCheck(query)
+        -- 只在勾选“团员”时才调用 StartDebuffCheck
+        if RaidAlert and RaidAlert.source_party then
+            RAMain:StartDebuffCheck(query)
+        else
+            -- 只注册聊天事件，不做debuff检测
+            RAMain:StartDebuffCheck() -- 停止任何已有检测
+            RAMain:RegisterChatEvents()
+            RAMain:UpdateStats(false, nil)
+        end
         searchBox:ClearFocus()
     end)
 
@@ -133,6 +273,7 @@ function RAMain:CreateMainFrame()
     stopBtn:SetText(L["停止"])
     stopBtn:SetScript("OnClick", function()
         RAMain:StartDebuffCheck()
+        RAMain:UpdateStats(false, nil)
     end)
 
     -- 关闭按钮（隐藏界面）
@@ -144,27 +285,39 @@ function RAMain:CreateMainFrame()
     hideBtn:SetScript("OnClick", function()
         RAMain:StartDebuffCheck()
         frame:Hide()
+        RAMain:UpdateStats(false, nil)
     end)
 
-    -- 冷却时间滑块（设置通知间隔）
-    cooldownSlider = CreateFrame("Slider", "RAStatsCooldownSlider", frame, "OptionsSliderTemplate")
-    cooldownSlider:SetOrientation("HORIZONTAL")
-    cooldownSlider:SetWidth(180)
-    cooldownSlider:SetHeight(20)
-    cooldownSlider:SetPoint("BOTTOMLEFT", searchBox, "TOPLEFT", 0, 20)
-    cooldownSlider:SetMinMaxValues(1, 60)
-    cooldownSlider:SetValueStep(1)
-    cooldownSlider:SetValue(RaidAlert and RaidAlert.notificationCooldownSeconds or 15)
-    cooldownSlider:SetScript("OnValueChanged", function()
-        -- arg1为当前滑块值
+    -- 新增：通知团队/私人选择框
+    local notifyTeamCheck = CreateFrame("CheckButton", "RANotifyTeamCheck", frame, "UICheckButtonTemplate")
+    notifyTeamCheck:SetPoint("TOPLEFT", searchBox, "BOTTOMLEFT", 0, -10)
+    notifyTeamCheck:SetWidth(24)
+    notifyTeamCheck:SetHeight(24)
+    notifyTeamCheck.text = notifyTeamCheck:CreateFontString(nil, "OVERLAY")
+    notifyTeamCheck.text:SetFontObject("GameFontNormal")
+    notifyTeamCheck.text:SetPoint("LEFT", notifyTeamCheck, "RIGHT", 2, 0)
+    notifyTeamCheck.text:SetText(L["通知团队"])
+    notifyTeamCheck:SetChecked(RaidAlert and RaidAlert.notifyTeam or false)
+    notifyTeamCheck:SetScript("OnClick", function()
         if RaidAlert then
-            RaidAlert.notificationCooldownSeconds = arg1
+            RaidAlert.notifyTeam = notifyTeamCheck:GetChecked()
         end
-        _G[cooldownSlider:GetName() .. 'Text']:SetText(L["通知间隔:"] .. " " .. arg1 .. L["秒"])
     end)
-    _G[cooldownSlider:GetName() .. 'Low']:SetText("1")
-    _G[cooldownSlider:GetName() .. 'High']:SetText("60")
-    _G[cooldownSlider:GetName() .. 'Text']:SetText(L["通知间隔:"] .. " " .. cooldownSlider:GetValue() .. L["秒"])
+
+    local notifyWhisperCheck = CreateFrame("CheckButton", "RANotifyWhisperCheck", frame, "UICheckButtonTemplate")
+    notifyWhisperCheck:SetPoint("LEFT", notifyTeamCheck, "RIGHT", 100, 0)
+    notifyWhisperCheck:SetWidth(24)
+    notifyWhisperCheck:SetHeight(24)
+    notifyWhisperCheck.text = notifyWhisperCheck:CreateFontString(nil, "OVERLAY")
+    notifyWhisperCheck.text:SetFontObject("GameFontNormal")
+    notifyWhisperCheck.text:SetPoint("LEFT", notifyWhisperCheck, "RIGHT", 2, 0)
+    notifyWhisperCheck.text:SetText(L["通知私人"])
+    notifyWhisperCheck:SetChecked(RaidAlert and RaidAlert.notifyWhisper or true)
+    notifyWhisperCheck:SetScript("OnClick", function()
+        if RaidAlert then
+            RaidAlert.notifyWhisper = notifyWhisperCheck:GetChecked()
+        end
+    end)
 
     -- 最近监听debuff的ScrollFrame
     local scrollFrame = CreateFrame("ScrollFrame", "RARecentDebuffScrollFrame", frame, "UIPanelScrollFrameTemplate")
@@ -372,26 +525,46 @@ function RAMain:StartDebuffCheck(debuffInput)
         RAMain:NotifyDebuffedPlayers(activeDebuffNames)
     end, 1)
 
+    -- 新增：注册聊天事件
+    self:RegisterChatEvents()
+
     self:UpdateStats(true, table.concat(debuffList, " / "))
 end
 
--- 检查团队成员是否中了指定debuff，并私聊提醒
-function RAMain:NotifyDebuffedPlayers(debuffNames)
+-- 检查团队成员是否中了指定debuff，返回中了debuff的玩家及debuff
+function RAMain:CheckDebuffedPlayers(debuffNames)
     if type(debuffNames) == "string" then
         debuffNames = { debuffNames }
     end
+    local debuffedPlayers = {}
     for playerName, debuffs in pairs(RARaid.raidDebuffs) do
-        local notifiedDebuffs = {}
-        local now = GetTime()
         for _, debuff in ipairs(debuffs) do
             for _, targetDebuff in ipairs(debuffNames) do
-                if debuff == targetDebuff and not notifiedDebuffs[debuff] then
-                    -- 冷却时间内不重复提醒同一debuff
-                    local cooldownKey = playerName .. ":" .. debuff
-                    if not whisperCooldowns[cooldownKey] or now - whisperCooldowns[cooldownKey] > RaidAlert.notificationCooldownSeconds then
-                        SendChatMessage("你中了debuff: " .. debuff .. "  (时间: " .. DV_Date() .. ")", "WHISPER", nil,
-                            playerName)
-                        whisperCooldowns[cooldownKey] = now
+                if debuff == targetDebuff then
+                    if not debuffedPlayers[playerName] then
+                        debuffedPlayers[playerName] = {}
+                    end
+                    table.insert(debuffedPlayers[playerName], debuff)
+                end
+            end
+        end
+    end
+    return debuffedPlayers
+end
+
+-- 私聊提醒中了debuff的玩家
+function RAMain:NotifyDebuffedPlayers(debuffNames)
+    local debuffedPlayers = self:CheckDebuffedPlayers(debuffNames)
+    local now = GetTime()
+    for playerName, debuffs in pairs(debuffedPlayers) do
+        local notifiedDebuffs = {}
+        for _, debuff in ipairs(debuffs) do
+            if not notifiedDebuffs[debuff] then
+                local cooldownKey = playerName .. ":" .. debuff
+                if not whisperCooldowns[cooldownKey] or now - whisperCooldowns[cooldownKey] > RaidAlert.notificationCooldownSeconds then
+                    -- 新增：根据选择框决定通知方式
+                    if RaidAlert and RaidAlert.notifyWhisper then
+                        SendChatMessage("你中了debuff: " .. debuff .. "  (时间: " .. DV_Date() .. ")", "WHISPER", nil, playerName)
                         -- 如果有WIM聊天插件，自动关闭会话窗口
                         if WIM_CloseConvo then
                             local closeName = playerName
@@ -400,8 +573,12 @@ function RAMain:NotifyDebuffedPlayers(debuffNames)
                             end, 1)
                         end
                     end
-                    notifiedDebuffs[debuff] = true
+                    if RaidAlert and RaidAlert.notifyTeam then
+                        SendChatMessage(playerName .. " 中了debuff: " .. debuff .. "  (时间: " .. DV_Date() .. ")", "RAID")
+                    end
+                    whisperCooldowns[cooldownKey] = now
                 end
+                notifiedDebuffs[debuff] = true
             end
         end
     end
@@ -412,18 +589,69 @@ end
 -- debuffName: 当前检测的debuff名称
 function RAMain:UpdateStats(isActive, debuffName)
     local status = isActive and L["正在检测"] or L["未检测"]
-    statsText:SetText(string.format(L["当前状态: %s, 当前检测名称: %s"], status, debuffName or L["无"]))
+    -- 新增：显示当前检测来源
+    local sources = {}
+    if RaidAlert and RaidAlert.source_party then table.insert(sources, L["团员"]) end
+    if RaidAlert and RaidAlert.source_raid then table.insert(sources, L["团队"]) end
+    if RaidAlert and RaidAlert.source_yell then table.insert(sources, L["大喊"]) end
+    if RaidAlert and RaidAlert.source_boss then table.insert(sources, L["Boss喊话"]) end
+    local sourceStr = getn(sources) > 0 and table.concat(sources, " / ") or L["无"]
+    statsText:SetText(string.format(L["当前状态: %s, 当前检测名称: %s, 检测来源: %s"], status, debuffName or L["无"], sourceStr))
     statsFrame.text = statsText
 end
 
--- 注册聊天事件（团队、团队领袖、系统频道）
+-- 辅助函数：判断事件是否已注册
+local function IsEventRegistered(self, event)
+    if not self or not self.eventRegistry then return false end
+    return self.eventRegistry[event] ~= nil
+end
+
+-- 注册聊天事件（根据检测来源选择框）
 function RAMain:RegisterChatEvents()
-    self:RegisterEvent("CHAT_MSG_RAID", "HandleChatMessage")
-    self:RegisterEvent("CHAT_MSG_RAID_LEADER", "HandleChatMessage")
+    -- 先注销所有相关事件（加判断，避免AceEvent报错）
+    local events = {
+        "CHAT_MSG_RAID",
+        "CHAT_MSG_YELL",
+        "CHAT_MSG_MONSTER_YELL",
+        "CHAT_MSG_RAID_LEADER",
+        "CHAT_MSG_SYSTEM"
+    }
+    for _, event in ipairs(events) do
+        -- AceEvent-2.0 会在 RAMain[event] 存在时注册事件
+        -- 这里用 AceEvent 的私有表 eventRegistry 判断
+        if IsEventRegistered(self, event) then
+            self:UnregisterEvent(event)
+        end
+    end
+    -- 根据选择框注册
+    if RaidAlert and RaidAlert.source_raid then
+        self:RegisterEvent("CHAT_MSG_RAID", "HandleChatMessage")
+        self:RegisterEvent("CHAT_MSG_RAID_LEADER", "HandleChatMessage")
+    end
+    if RaidAlert and RaidAlert.source_yell then
+        self:RegisterEvent("CHAT_MSG_YELL", "HandleChatMessage")
+    end
+    if RaidAlert and RaidAlert.source_boss then
+        self:RegisterEvent("CHAT_MSG_MONSTER_YELL", "HandleChatMessage")
+    end
+    -- 系统频道保留
     self:RegisterEvent("CHAT_MSG_SYSTEM", "HandleChatMessage")
 end
 
--- 聊天消息处理函数
+-- 聊天消息处理函数（参数顺序修正：msg, sender, event）
 function RAMain:HandleChatMessage(msg, sender)
-    DEFAULT_CHAT_FRAME:AddMessage("收到聊天消息: " .. tostring(msg) .. " 来自: " .. tostring(sender))
+    local event = AceEvent_currentEvent -- AceEvent-2.0 会设置全局变量 AceEvent_currentEvent
+    DEFAULT_CHAT_FRAME:AddMessage("event: " .. tostring(event) .. ", msg: " .. tostring(msg) .. ", sender: " .. tostring(sender))
+    -- 新增：处理不同来源的消息
+    if event == "CHAT_MSG_RAID" or event == "CHAT_MSG_RAID_LEADER" then
+        -- 处理团队消息
+        -- print("团队消息:", sender, msg)
+    elseif event == "CHAT_MSG_YELL" then
+        -- 处理大喊消息
+        -- print("大喊:", sender, msg)
+    elseif event == "CHAT_MSG_MONSTER_YELL" then
+        -- 处理Boss喊话
+        -- print("Boss喊话:", sender, msg)
+    end
+    -- ...可在此添加后续处理逻辑...
 end

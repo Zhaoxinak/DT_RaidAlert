@@ -68,6 +68,8 @@ function RaidAlert:OnInitialize()
 
     self.isPrivateWhisperMode = false    -- 私聊模式默认关闭
     self.notificationCooldownSeconds = 15 -- 消息通知冷却时间 (秒)
+    self.notifyTeam = false              -- 新增：团队通知默认关闭
+    self.notifyWhisper = true            -- 新增：私人通知默认开启
 
     DEFAULT_CHAT_FRAME:AddMessage(self.Prefix .. L["已加载"])
 end
@@ -101,6 +103,9 @@ function RaidAlert:OnProfileEnable()
     if RAMain and RAMain.OnProfileUpdate then
         RAMain:OnProfileUpdate(self.opt)
     end
+    -- 新增：同步通知选项
+    self.notifyTeam = self.notifyTeam or false
+    self.notifyWhisper = self.notifyWhisper or true
 end
 
 -- 新增：保存 recentDebuffs 到数据库

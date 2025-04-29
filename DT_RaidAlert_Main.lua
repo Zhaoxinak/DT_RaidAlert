@@ -552,6 +552,22 @@ function RAMain:CheckDebuffedPlayers(debuffNames)
     return debuffedPlayers
 end
 
+-- 新增：发送私信的辅助方法
+function RAMain:SendWhisperMessage(targetPlayer, message)
+    if not targetPlayer or targetPlayer == "" then return end
+
+    -- 仅在勾选了“通知私人”时发送私信
+    if RaidAlert and RaidAlert.notifyWhisper then
+        SendChatMessage(message, "WHISPER", nil, targetPlayer)
+        -- 如果有 WIM 聊天插件，自动关闭会话窗口
+        if WIM_CloseConvo then
+            self:ScheduleEvent(function()
+                WIM_CloseConvo(targetPlayer)
+            end, 1)
+        end
+    end
+end
+
 -- 私聊提醒中了debuff的玩家
 function RAMain:NotifyDebuffedPlayers(debuffNames)
     local debuffedPlayers = self:CheckDebuffedPlayers(debuffNames)
@@ -564,14 +580,7 @@ function RAMain:NotifyDebuffedPlayers(debuffNames)
                 if not whisperCooldowns[cooldownKey] or now - whisperCooldowns[cooldownKey] > RaidAlert.notificationCooldownSeconds then
                     -- 新增：根据选择框决定通知方式
                     if RaidAlert and RaidAlert.notifyWhisper then
-                        SendChatMessage("你中了debuff: " .. debuff .. "  (时间: " .. DV_Date() .. ")", "WHISPER", nil, playerName)
-                        -- 如果有WIM聊天插件，自动关闭会话窗口
-                        if WIM_CloseConvo then
-                            local closeName = playerName
-                            self:ScheduleEvent(function()
-                                WIM_CloseConvo(closeName)
-                            end, 1)
-                        end
+                        self:SendWhisperMessage(playerName, "你中了debuff: " .. debuff .. "  (时间: " .. DV_Date() .. ")")
                     end
                     if RaidAlert and RaidAlert.notifyTeam then
                         SendChatMessage(playerName .. " 中了debuff: " .. debuff .. "  (时间: " .. DV_Date() .. ")", "RAID")
@@ -633,6 +642,8 @@ function RAMain:RegisterChatEvents()
     end
     if RaidAlert and RaidAlert.source_boss then
         self:RegisterEvent("CHAT_MSG_MONSTER_YELL", "HandleChatMessage")
+        self:RegisterEvent("CHAT_MSG_RAID_BOSS_EMOTE", "HandleChatMessage")
+        
     end
     -- 系统频道保留
     self:RegisterEvent("CHAT_MSG_SYSTEM", "HandleChatMessage")
@@ -640,18 +651,24 @@ end
 
 -- 聊天消息处理函数（参数顺序修正：msg, sender, event）
 function RAMain:HandleChatMessage(msg, sender)
-    local event = AceEvent_currentEvent -- AceEvent-2.0 会设置全局变量 AceEvent_currentEvent
-    DEFAULT_CHAT_FRAME:AddMessage("event: " .. tostring(event) .. ", msg: " .. tostring(msg) .. ", sender: " .. tostring(sender))
-    -- 新增：处理不同来源的消息
-    if event == "CHAT_MSG_RAID" or event == "CHAT_MSG_RAID_LEADER" then
-        -- 处理团队消息
-        -- print("团队消息:", sender, msg)
-    elseif event == "CHAT_MSG_YELL" then
-        -- 处理大喊消息
-        -- print("大喊:", sender, msg)
-    elseif event == "CHAT_MSG_MONSTER_YELL" then
-        -- 处理Boss喊话
-        -- print("Boss喊话:", sender, msg)
+    -- 确保 msg 是字符串类型
+    if type(msg) ~= "string" then
+        DEFAULT_CHAT_FRAME:AddMessage("错误: msg 不是字符串类型")
+        return
     end
-    -- ...可在此添加后续处理逻辑...
+
+    -- 检查消息是否以 "鲁普图兰命令大地粉碎" 开头
+    local prefix = "鲁普图兰命令大地粉碎"
+    if string.sub(msg, 1, string.len(prefix)) == prefix then
+        -- 提取玩家名字（消息中前缀后的部分）
+        local targetPlayer = string.match(msg, prefix .. " (.+)")
+        if targetPlayer and targetPlayer ~= "" then
+            -- 删除 targetPlayer 中的感叹号
+            targetPlayer = string.gsub(targetPlayer, "！", "")
+            self:SendWhisperMessage(targetPlayer, "你被点名了，请注意！")
+        end
+    end
+
+    -- 调试信息
+    DEFAULT_CHAT_FRAME:AddMessage("msg: " .. tostring(msg) .. ", sender: " .. tostring(sender))
 end

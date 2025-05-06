@@ -560,9 +560,11 @@ function RAMain:SendWhisperMessage(targetPlayer, message)
     if RaidAlert and RaidAlert.notifyWhisper then
         SendChatMessage(message, "WHISPER", nil, targetPlayer)
         -- 如果有 WIM 聊天插件，自动关闭会话窗口
-        if WIM_CloseConvo then
+        if type(WIM_CloseConvo) == "function" and targetPlayer and targetPlayer ~= "" then
             self:ScheduleEvent(function()
-                WIM_CloseConvo(targetPlayer)
+                if targetPlayer and targetPlayer ~= "" then
+                    WIM_CloseConvo(targetPlayer)
+                end
             end, 1)
         end
     end
